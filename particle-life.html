@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PARTICLE LIFE — hệ sinh thái 6 loài</title>
+<style>
+  :root{ --bg:#07090f; --panel:#0d1220; --card:#111830; --line:#1e2a4a; --tx:#c9d6f2; --dim:#7d8db0; --acc:#4dd6ff; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+  header{padding:12px 20px 8px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px}
+  header h1{margin:0;font-size:18px;color:var(--acc)}
+  header .sub{color:var(--dim);font-size:12px}
+  main{display:flex;flex-wrap:wrap;gap:14px;padding:12px 20px;align-items:flex-start}
+  .stage{flex:1 1 420px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  canvas{width:min(64vmin,600px);aspect-ratio:1;image-rendering:pixelated;border:1px solid var(--line);border-radius:6px;background:#000;cursor:crosshair}
+  .hint{color:var(--dim);font-size:12px;text-align:center}
+  aside{width:370px;display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .card h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+  button{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;font-size:12.5px;cursor:pointer}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+  .row{display:flex;gap:6px;flex-wrap:wrap}
+  .row button{flex:1 1 auto}
+  .ctl{display:grid;grid-template-columns:110px 1fr 46px;gap:6px;align-items:center;margin:5px 0}
+  .ctl label{font-size:12px;color:var(--dim)}
+  .ctl output{font:11.5px Consolas,monospace;color:#8affd8;text-align:right}
+  input[type=range]{width:100%;accent-color:var(--acc)}
+  #mat{display:grid;grid-template-columns:22px repeat(6, 1fr);gap:2px;font:10px Consolas,monospace}
+  #mat .c{aspect-ratio:1;border-radius:3px;cursor:pointer;border:1px solid #000;min-height:20px}
+  #mat .h{color:var(--dim);text-align:center;align-self:center}
+  #status{padding:7px 20px;border-top:1px solid var(--line);color:var(--dim);font:12px Consolas,monospace;white-space:pre-wrap}
+  #fatal{position:fixed;inset:0;background:rgba(5,6,10,.95);display:none;align-items:center;justify-content:center;color:#ff9a9a;padding:30px;text-align:center;z-index:5}
+</style>
+</head>
+<body>
+<header>
+  <h1>PARTICLE LIFE</h1>
+  <span class="sub">6 loài hạt · ma trận hút/đẩy không đối xứng · mọi "loài" chỉ là 1 con số trong ma trận</span>
+</header>
+<main>
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="hint">Chuột trái: vẽ thêm hạt loài đang chọn · chuột phải: xóa vùng</div>
+  </div>
+  <aside>
+    <div class="card">
+      <h3>Ma trận lực g[i][j] — hàng i cảm nhận cột j</h3>
+      <div id="mat"></div>
+      <div style="color:var(--dim);font-size:11px;margin-top:6px">Click ô: đảo dấu · click chuột phải: ×0.5 · Xanh = hút, đỏ = đẩy. Sự sống nằm trong sự không đối xứng.</div>
+    </div>
+    <div class="card">
+      <h3>Thế giới</h3>
+      <div class="ctl"><label>số hạt</label><input type="range" id="count" min="400" max="4096" step="256" value="1536"><output id="countV"></output></div>
+      <div class="ctl"><label>bán kính rMax</label><input type="range" id="rmax" min="0.04" max="0.30" step="0.01" value="0.13"><output id="rmaxV"></output></div>
+      <div class="ctl"><label>ma sát (×/frame)</label><input type="range" id="fric" min="0.2" max="0.9" step="0.05" value="0.55"><output id="fricV"></output></div>
+      <div class="ctl"><label>cường độ lực</label><input type="range" id="force" min="0.2" max="3" step="0.1" value="1"><output id="forceV"></output></div>
+      <div class="ctl"><label>loài vẽ</label><input type="range" id="brushSp" min="0" max="5" step="1" value="0"><output id="brushSpV"></output></div>
+      <div class="row" style="margin-top:8px">
+        <button id="pRandom">🎲 Ngẫu nhiên</button>
+        <button id="pCells">🦠 Tế bào</button>
+        <button id="pSnake">🐍 Chuỗi săn</button>
+        <button id="pSym">⚔ Đối xứng</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="btnReseed">↺ Rải lại hạt</button>
+        <button id="btnPause">⏸ Dừng</button>
+      </div>
+    </div>
+  </aside>
+</main>
+<footer id="status"></footer>
+<div id="fatal"></div>
+
+<script id="vs" type="x-shader/x-vertex">#version 300 es
+layout(location=0) in vec2 p;
+void main(){ gl_Position = vec4(p,0.,1.); }
+</script>
+
+<script id="physfs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform sampler2D uParts;   // RGBA32F: xy = vị trí [0,1], zw = vận tốc
+uniform sampler2D uSpecies; // R32F: loài của hạt
+uniform int uCount, uTexW;
+uniform float uR2, uFric, uForce, uDt;
+uniform float uMat[36];
+out vec4 o;
+void main(){
+  ivec2 pix = ivec2(gl_FragCoord.xy);
+  if (pix.x * pix.y >= uCount && pix != ivec2(0)) { // texel vượt số hạt: giữ nguyên (nền trong suốt)
+    o = texelFetch(uParts, pix, 0); return;
+  }
+  vec4 me = texelFetch(uParts, pix, 0);
+  if (pix.x + pix.y * uTexW >= uCount) { o = vec4(0.); return; }
+  float sp1 = texelFetch(uSpecies, pix, 0).r;
+  vec2 force = vec2(0.);
+  for (int j = 0; j < 4096; j++){
+    if (j >= uCount) break;
+    ivec2 q = ivec2(j % uTexW, j / uTexW);
+    vec4 other = texelFetch(uParts, q, 0);
+    vec2 d = me.xy - other.xy;
+    float d2 = dot(d, d);
+    if (d2 > 0.0000001 && d2 < uR2){
+      float sp2 = texelFetch(uSpecies, q, 0).r;
+      float dist = sqrt(d2);
+      float g = uMat[int(sp1) * 6 + int(sp2)] * uForce;
+      force += d / dist * g * min(1.0, (uR2*0.25) / d2 * 4.0) * 0.02;
+    }
+  }
+  vec2 vel = (me.zw + force * uDt) * uFric;
+  vec2 pos = fract(me.xy + vel * uDt);
+  o = vec4(pos, vel);
+}
+</script>
+
+<script id="renderfs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform sampler2D uPos;
+out vec4 o;
+void main(){ o = vec4(0.02, 0.025, 0.05, 1.0); }
+</script>
+
+<script id="pointvs" type="x-shader/x-vertex">#version 300 es
+uniform sampler2D uParts;
+uniform sampler2D uSpecies;
+uniform int uTexW;
+out vec3 vColor;
+vec3 palette(float s){
+  int i = int(s);
+  if (i == 0) return vec3(0.30, 0.84, 1.00);
+  if (i == 1) return vec3(1.00, 0.82, 0.40);
+  if (i == 2) return vec3(0.54, 1.00, 0.62);
+  if (i == 3) return vec3(1.00, 0.45, 0.55);
+  if (i == 4) return vec3(0.72, 0.54, 1.00);
+  return vec3(0.95, 0.95, 0.98);
+}
+void main(){
+  ivec2 q = ivec2(gl_VertexID % uTexW, gl_VertexID / uTexW);
+  vec4 p = texelFetch(uParts, q, 0);
+  vColor = palette(texelFetch(uSpecies, q, 0).r);
+  gl_Position = vec4(p.xy * 2.0 - 1.0, 0., 1.);
+  gl_PointSize = 2.6;
+}
+</script>
+
+<script id="pointfs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+in vec3 vColor;
+out vec4 o;
+void main(){
+  vec2 uv = gl_PointCoord * 2.0 - 1.0;
+  float a = max(0.0, 1.0 - dot(uv, uv));
+  o = vec4(vColor * (0.35 + a * 0.85), a);
+}
+</script>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const cv = $('cv');
+const gl = cv.getContext('webgl2', { antialias:false, alpha:false });
+function fatal(m){ const f = $('fatal'); f.textContent = m; f.style.display = 'flex'; throw new Error(m); }
+if (!gl) fatal('Cần WebGL2');
+if (!gl.getExtension('EXT_color_buffer_float')) fatal('Thiếu EXT_color_buffer_float');
+
+function sh(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fatal('Shader: ' + gl.getShaderInfoLog(s)); return s; }
+function prog(vsId, fsId){
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, $(vsId).textContent));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, $(fsId).textContent));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fatal('Link: ' + gl.getProgramInfoLog(p));
+  return p;
+}
+const physP = prog('vs','physfs'), renderP = prog('vs','renderfs'), pointP = prog('pointvs','pointfs');
+const U = (p, n) => gl.getUniformLocation(p, n);
+
+/* quốc va chạm khung: vẽ quad phủ trong suốt để dùng blending */
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.disable(gl.DEPTH_TEST);
+
+/* ---------------- thế giới hạt ---------------- */
+const MAXP = 4096, TEXW = 64, TEXH = MAXP / TEXW;
+let count = 1536, paused = false, fric = 0.55, forceK = 1.0, rMax = 0.13, brushSp = 0;
+
+let partsTex = [], partsFBO = [], read = 0, speciesTex = null;
+let speciesData = new Float32Array(MAXP);   // bản mirror loài trong JS
+function makePartsTex(){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, TEXW, TEXH, 0, gl.RGBA, gl.FLOAT, new Float32Array(MAXP*4));
+  for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST);
+  for (const p of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE);
+  const f = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  return [t, f];
+}
+function makeSpeciesTex(data){
+  if (!speciesTex) speciesTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, speciesTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, TEXW, TEXH, 0, gl.RED, gl.FLOAT, data);
+  for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST);
+  for (const p of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE);
+}
+function reseed(){
+  const data = new Float32Array(MAXP * 4), sp = new Float32Array(MAXP);
+  for (let i = 0; i < MAXP; i++){
+    data[i*4] = Math.random(); data[i*4+1] = Math.random();
+    data[i*4+2] = 0; data[i*4+3] = 0;
+    sp[i] = i % 6;
+  }
+  speciesData.set(sp);
+  partsTex.forEach(t => { gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEXW, TEXH, gl.RGBA, gl.FLOAT, data); });
+  makeSpeciesTex(speciesData);
+}
+
+let mat = new Float32Array(36);
+function setMat(vals){ mat = new Float32Array(vals); drawMatrixUI(); }
+function randomMat(){ return Array.from({length:36}, () => +(Math.random()*1.4 - 0.7).toFixed(2)); }
+const PRESET = {
+  pRandom: () => randomMat(),
+  pCells:  () => { const m = []; for (let i=0;i<6;i++) for (let j=0;j<6;j++)
+      m.push(i===j ? -0.32 : (j === (i+1)%6 ? 0.62 : (j === (i+3)%6 ? 0.3 : -0.08))); return m; },
+  pSnake:  () => { const m = []; for (let i=0;i<6;i++) for (let j=0;j<6;j++)
+      m.push(j === (i+1)%6 ? 0.75 : (j === (i+5)%6 ? 0.35 : (i===j ? -0.5 : -0.12))); return m; },
+  pSym:    () => { const m = []; for (let i=0;i<6;i++) for (let j=0;j<6;j++)
+      m.push(i===j ? 0.45 : -0.25); return m; },
+};
+
+/* vẽ ma trận UI */
+function drawMatrixUI(){
+  const el = $('mat'); el.innerHTML = '<div class="h"></div>' +
+    [0,1,2,3,4,5].map(i => `<div class="h">${'ABCDEF'[i]}</div>`).join('');
+  for (let i = 0; i < 6; i++){
+    el.insertAdjacentHTML('beforeend', `<div class="h">${'ABCDEF'[i]}</div>`);
+    for (let j = 0; j < 6; j++){
+      const v = mat[i*6+j];
+      const idx = i*6+j;
+      el.insertAdjacentHTML('beforeend',
+        `<div class="c" data-i="${idx}" title="g[${'ABCDEF'[i]}][${'ABCDEF'[j]}] = ${v.toFixed(2)}"
+          style="background: rgb(${v<0?Math.min(255, -v*255+40):30}, ${v>0?Math.min(255, v*200+40):30}, ${60})"></div>`);
+    }
+  }
+  el.querySelectorAll('.c').forEach(c => {
+    c.onclick = e => { const i = +c.dataset.i;
+      mat[i] = e.button === 2 ? +(mat[i]*0.5).toFixed(2) : +(-mat[i]).toFixed(2); drawMatrixUI(); };
+    c.oncontextmenu = e => e.preventDefault();
+  });
+}
+$('mat').addEventListener('contextmenu', e => e.preventDefault());
+
+/* ---------------- vật lý & render ---------------- */
+function physics(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, partsFBO[1 - read]);
+  gl.viewport(0, 0, TEXW, TEXH);
+  gl.useProgram(physP);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, partsTex[read]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, speciesTex);
+  gl.uniform1i(U(physP,'uParts'), 0); gl.uniform1i(U(physP,'uSpecies'), 1);
+  gl.uniform1i(U(physP,'uCount'), count); gl.uniform1i(U(physP,'uTexW'), TEXW);
+  gl.uniform1f(U(physP,'uR2'), rMax*rMax); gl.uniform1f(U(physP,'uFric'), fric);
+  gl.uniform1f(U(physP,'uForce'), forceK); gl.uniform1f(U(physP,'uDt'), 1.0);
+  gl.uniform1fv(U(physP,'uMat'), mat);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  read = 1 - read;
+}
+function render(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, cv.width, cv.height);
+  gl.useProgram(renderP);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // hạt: gl.POINTS với vertex trích từ texture
+  gl.useProgram(pointP);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, partsTex[read]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, speciesTex);
+  gl.uniform1i(U(pointP,'uParts'), 0); gl.uniform1i(U(pointP,'uSpecies'), 1);
+  gl.uniform1i(U(pointP,'uTexW'), TEXW);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.drawArrays(gl.POINTS, 0, count);
+  gl.disable(gl.BLEND);
+}
+
+/* chuột vẽ hạt */
+let drawing = 0;
+function paintAt(e, erase){
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width, y = 1 - (e.clientY - r.top) / r.height;
+  const raw = new Float32Array(TEXW * TEXH * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, partsFBO[read]);
+  gl.readPixels(0, 0, TEXW, TEXH, gl.RGBA, gl.FLOAT, raw);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  let placed = 0;
+  for (let i = 0; i < count && placed < 150; i++){
+    const px = raw[i*4], py = raw[i*4+1];
+    const inWorld = px >= 0 && px <= 1 && py >= 0 && py <= 1;
+    if (inWorld && Math.hypot(px - x, py - y) < 0.07){
+      if (erase){ raw[i*4] = 0.002; raw[i*4+1] = 0.002; raw[i*4+2] = raw[i*4+3] = 0; } // bãi đỗ
+      else {
+        raw[i*4] = x + (Math.random()-0.5)*0.012;
+        raw[i*4+1] = y + (Math.random()-0.5)*0.012;
+        raw[i*4+2] = raw[i*4+3] = 0;
+      }
+      speciesData[i] = brushSp;
+      placed++;
+    }
+  }
+  for (const t of partsTex){ gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEXW, TEXH, gl.RGBA, gl.FLOAT, raw); }
+  makeSpeciesTex(speciesData);
+}
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => { drawing = e.button === 2 ? -1 : 1; paintAt(e, drawing === -1); });
+cv.addEventListener('pointermove', e => { if (drawing) paintAt(e, drawing === -1); });
+addEventListener('pointerup', () => drawing = 0);
+
+/* ---------------- UI ---------------- */
+function bindRange(id, out, fmt, fn){
+  const el = $(id);
+  const upd = () => { $(out).textContent = fmt(+el.value); fn(+el.value); };
+  el.oninput = upd; upd();
+}
+bindRange('count', 'countV', v => v, v => { count = v; });
+bindRange('rmax', 'rmaxV', v => v.toFixed(2), v => rMax = v);
+bindRange('fric', 'fricV', v => v.toFixed(2), v => fric = v);
+bindRange('force', 'forceV', v => v.toFixed(1), v => forceK = v);
+bindRange('brushSp', 'brushSpV', v => 'ABCDEF'[v], v => brushSp = v);
+for (const [id, fn] of Object.entries(PRESET)) $(id).onclick = () => { setMat(fn()); };
+$('btnReseed').onclick = () => reseed();
+$('btnPause').onclick = () => { paused = !paused; $('btnPause').textContent = paused ? '▶ Chạy' : '⏸ Dừng'; };
+
+/* ---------------- vòng lặp ---------------- */
+let lastT = performance.now(), fps = 60;
+function loop(now){
+  const dt = now - lastT; lastT = now;
+  if (dt > 0) fps = fps * 0.95 + (1000/dt) * 0.05;
+  if (!paused){ physics(); physics(); }   // 2 bước vật lý mỗi frame cho chuyển động nhanh
+  render();
+  $('status').textContent = `${count} hạt · ${fps.toFixed(0)} fps · rMax=${rMax.toFixed(2)} · fric=${fric.toFixed(2)}`;
+  requestAnimationFrame(loop);
+}
+
+/* init */
+cv.width = 600; cv.height = 600;
+{
+  const a = makePartsTex(), b = makePartsTex();
+  partsTex = [a[0], b[0]]; partsFBO = [a[1], b[1]];
+}
+setMat(PRESET.pCells());
+reseed();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
