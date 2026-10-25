@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LENIA PETRI — vườn đấu tiến hóa</title>
+<style>
+  :root{
+    --bg:#07090f; --panel:#0d1220; --card:#111830; --line:#1e2a4a;
+    --tx:#c9d6f2; --dim:#7d8db0; --acc:#4dd6ff; --acc2:#8affd8; --gold:#ffd166;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+  header{padding:12px 20px 8px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px}
+  header h1{margin:0;font-size:18px;color:var(--acc);letter-spacing:.5px}
+  header .sub{color:var(--dim);font-size:12px}
+  #hud{font:13px/1 Consolas,monospace;color:var(--gold);white-space:nowrap}
+  main{display:flex;flex-wrap:wrap;gap:14px;padding:12px 20px;align-items:flex-start}
+  .stage{flex:1 1 420px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  canvas{width:min(64vmin,600px);aspect-ratio:1;image-rendering:pixelated;border:1px solid var(--line);
+    border-radius:6px;background:#000}
+  #stageInfo{min-height:22px;font-size:12.5px;color:var(--dim);text-align:center;white-space:pre-wrap}
+  aside{width:360px;display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .tabs{display:flex;gap:6px}
+  .tabs button{flex:1;background:var(--card);color:var(--dim);border:1px solid var(--line);
+    border-radius:6px;padding:7px 4px;font:inherit;font-size:13px;cursor:pointer}
+  .tabs button.on{background:#0e3a52;color:var(--acc);border-color:#1c6a92}
+  button.act{background:#0e3a52;color:#bdeeff;border:1px solid #1c6a92;border-radius:6px;
+    padding:8px 12px;font:inherit;cursor:pointer;width:100%;margin-top:6px}
+  button.act:hover{border-color:var(--acc)}
+  button.act:disabled{opacity:.45;cursor:default}
+  select{width:100%;background:var(--card);color:var(--tx);border:1px solid var(--line);
+    border-radius:6px;padding:6px 8px;font:inherit;font-size:13px}
+  label.lb{display:block;color:var(--dim);font-size:12px;margin:8px 0 3px}
+  .verdict{margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--card);
+    border-left:3px solid var(--acc);font-size:13px;white-space:pre-wrap}
+  .codexlist{max-height:300px;overflow-y:auto;font-size:12.5px}
+  .codexlist .row{padding:5px 6px;border-bottom:1px dashed var(--line);display:flex;justify-content:space-between;gap:6px}
+  .codexlist .row.sel{background:#0e3a52;border-radius:4px}
+  .codexlist .g{color:var(--dim);font:11px Consolas,monospace}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;background:#123; color:var(--acc2);font-size:11px;margin-left:4px}
+  #status{padding:7px 20px;border-top:1px solid var(--line);color:var(--dim);
+    font:12px Consolas,monospace;white-space:pre-wrap}
+  #fatal{position:fixed;inset:0;background:rgba(5,6,10,.94);display:none;align-items:center;
+    justify-content:center;color:#ff9a9a;font-size:15px;padding:30px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>LENIA PETRI <span style="font-size:12px;color:var(--dim)">v0.2</span></h1>
+  <span class="sub">săn gen → đấu arena → lai tiến hóa</span>
+  <span id="hud"></span>
+  <button id="btnMute" title="âm thanh" style="background:var(--card);color:var(--acc2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer">🔊</button>
+  <button id="btnHelp" style="background:var(--card);color:var(--acc);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer">?</button>
+</header>
+<main>
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div id="stageInfo"></div>
+  </div>
+  <aside>
+    <div class="tabs">
+      <button data-tab="dau" class="on">⚔ Đấu</button>
+      <button data-tab="lai">🧬 Lai</button>
+      <button data-tab="san">🍜 Săn</button>
+      <button data-tab="codex">📖 Codex</button>
+    </div>
+    <div class="card" id="tab-dau">
+      <label class="lb">Đấu sĩ của bạn (đội xanh — sân nhà ngẫu nhiên)</label>
+      <select id="fA"></select>
+      <label class="lb">Đối thủ hoang dã (đội lửa)</label>
+      <select id="fB"></select>
+      <button class="act" id="btnFight">⚔ Đấu! (thắng +40⚡ · hòa +15 · thua +5)</button>
+      <div class="verdict" id="vFight" style="display:none"></div>
+    </div>
+    <div class="card" id="tab-lai" style="display:none">
+      <label class="lb">Mẹ</label><select id="fP1"></select>
+      <label class="lb">Bố</label><select id="fP2"></select>
+      <div style="color:var(--dim);font-size:12px;margin-top:6px">
+        Gen con = trung bình bố mẹ + đột biến. Sau đó ươm trong đĩa mầm — sống mới vào codex,
+        chết non mất 45⚡. Rủi ro nằm ở chỗ đó 😉</div>
+      <button class="act" id="btnBreed">🧬 Lai (45⚡)</button>
+      <div class="verdict" id="vBreed" style="display:none"></div>
+    </div>
+    <div class="card" id="tab-san" style="display:none">
+      <div style="color:var(--dim);font-size:12.5px">
+        Rót một bể hoang dã với gen ngẫu nhiên từ vùng giàu sự sống. Nếu sau khi lắng
+        còn vật chất sống → bắt được gen mới vào codex. Bể chết = mất 25⚡.</div>
+      <button class="act" id="btnHunt">🍜 Rót bể hoang (25⚡)</button>
+      <div class="verdict" id="vHunt" style="display:none"></div>
+    </div>
+    <div class="card" id="tab-codex" style="display:none">
+      <div class="codexlist" id="codexList"></div>
+      <button class="act" id="btnPreview">👁 Xem trên sân</button>
+      <button class="act" id="btnExport">📤 Copy gen code (chia sẻ)</button>
+      <label class="lb">📥 Dán gen code của người khác:</label>
+      <textarea id="impCode" rows="2" style="width:100%;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:6px;font:11px Consolas,monospace"></textarea>
+      <button class="act" id="btnImport">Nhập vào codex (miễn phí 1 lần đầu)</button>
+      <button class="act" id="btnReset" style="background:#3a0e0e;border-color:#6a1c1c;color:#ffbdbd">↺ Xóa save</button>
+    </div>
+  </aside>
+</main>
+<footer id="status"></footer>
+<div id="toast" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#0e3a52;border:1px solid #1c6a92;color:#bdeeff;padding:10px 18px;border-radius:8px;display:none;z-index:5;font-size:14px"></div>
+<div id="help" style="position:fixed;inset:0;background:rgba(5,6,10,.95);display:none;align-items:center;justify-content:center;z-index:10">
+  <div style="max-width:560px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 26px">
+    <h2 style="margin:0 0 10px;color:var(--acc)">Chào nhà sinh vật học mới! 🐙</h2>
+    <p style="margin:6px 0;color:var(--tx)">Mỗi <b style="color:var(--acc2)">creature</b> là một bộ gen toán học chạy thật trên GPU. Nhiệm vụ: xây bộ codex hùng mạnh nhất.</p>
+    <p style="margin:6px 0;color:var(--tx)">🍜 <b>Săn</b> — rót bể hoang, nếu sự sống tự nổi lên thì bắt về.<br>
+    ⚔ <b>Đấu</b> — chọn đấu sĩ đánh với đối thủ hoang dã, thắng ăn năng lượng.<br>
+    🧬 <b>Lai</b> — trộn 2 gen thành con mới (có thể chết non — rủi ro và hấp dẫn nằm ở đó).<br>
+    📖 <b>Codex</b> — bộ sưu tập + chia sẻ gen qua code cho bạn bè.</p>
+    <p style="margin:6px 0;color:var(--dim);font-size:12.5px">Mốc sưu tập 5/10/15/20/30 gen có thưởng năng lượng lớn. Gen hiếm = dùng nhiều thế hệ mới lai ra.</p>
+    <button class="act" id="btnStart" style="margin-top:10px">🐙 Bắt đầu nuôi</button>
+  </div>
+</div>
+<div id="fatal"></div>
+
+<script id="vs" type="x-shader/x-vertex">#version 300 es
+layout(location=0) in vec2 p;
+void main(){ gl_Position = vec4(p,0.,1.); }
+</script>
+
+<script id="simfs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform sampler2D uKernel;
+uniform float uSize; uniform int uR;
+uniform float uM, uS, uDt;  uniform int uGN;
+out vec4 o;
+float growth(float n){
+  if (uGN==1) return pow(max(0.0, 1.0 - pow(n-uM,2.0)/(9.0*uS*uS)), 4.0)*2.0-1.0;
+  if (uGN==2) return exp(-pow(n-uM,2.0)/(2.0*uS*uS))*2.0-1.0;
+  return (abs(n-uM)<=uS) ? 1.0 : -1.0;
+}
+void main(){
+  ivec2 pix = ivec2(gl_FragCoord.xy);
+  float a = texelFetch(uState, pix, 0).r;
+  float u = 0.0;
+  for (int dy=-uR; dy<=uR; dy++){
+    for (int dx=-uR; dx<=uR; dx++){
+      float d = length(vec2(float(dx),float(dy)));
+      if (d < float(uR)){
+        float r = d / float(uR);
+        float w = texelFetch(uKernel, ivec2(int(r*255.0),0), 0).r;
+        ivec2 q = (pix + ivec2(dx,dy) + ivec2(uSize)) % ivec2(uSize);
+        u += w * texelFetch(uState, q, 0).r;
+      }
+    }
+  }
+  o = vec4(clamp(a + uDt * growth(u), 0.0, 1.0), u, 0.0, 1.0);
+}
+</script>
+
+<script id="dispfs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform float uSize;
+out vec4 o;
+void main(){
+  float a = texture(uState, gl_FragCoord.xy / uSize).r;
+  vec3 s0=vec3(2,3,12)/255., s1=vec3(10,50,130)/255., s2=vec3(0,190,220)/255., s3=vec3(225,250,255)/255.;
+  vec3 c;
+  if      (a < 1.0/3.0) c = mix(s0, s1, a*3.0);
+  else if (a < 2.0/3.0) c = mix(s1, s2, a*3.0-1.0);
+  else                  c = mix(s2, s3, a*3.0-2.0);
+  o = vec4(c, 1.0);
+}
+</script>
+
+<script>
+"use strict";
+const SPECIES = __SPECIES__;
+
+/* ---------------- RLE decode (định dạng repo gốc) ---------------- */
+function ch2val(c){
+  if (c === '.' || c === 'b') return 0;
+  if (c === 'o') return 255;
+  if (c.length === 1) return c.charCodeAt(0) - 65 + 1;
+  return (c.charCodeAt(0) - 112) * 24 + (c.charCodeAt(1) - 65 + 25);
+}
+function rle2grid(st){
+  const rows = [[]]; let last = '', count = '';
+  for (const ch of st.replace(/!+$/, '') + '$'){
+    if (ch >= '0' && ch <= '9'){ count += ch; continue; }
+    if ('pqrstuvwxy'.includes(ch)){ last = ch; continue; }
+    const row = rows[rows.length - 1];
+    if (ch === '$'){
+      if (last || count){
+        const v = ch2val(last || '.') / 255;
+        for (let i = 0, n = parseInt(count || '1', 10); i < n; i++) row.push(v);
+      }
+      rows.push([]); last = ''; count = ''; continue;
+    }
+    const v = ch2val(last + ch) / 255;
+    for (let i = 0, n = parseInt(count || '1', 10); i < n; i++) row.push(v);
+    last = ''; count = '';
+  }
+  rows.pop();
+  while (rows.length && rows[rows.length - 1].length === 0) rows.pop();
+  const w = Math.max(...rows.map(r => r.length));
+  for (const r of rows) while (r.length < w) r.push(0);
+  return { w, h: rows.length, data: rows.flat() };
+}
+
+/* ---------------- WebGL2 ---------------- */
+const cv = document.getElementById('cv');
+const gl = cv.getContext('webgl2', { antialias:false, preserveDrawingBuffer:true, alpha:false });
+function fatal(m){ const f = document.getElementById('fatal'); f.textContent = m; f.style.display = 'flex'; throw new Error(m); }
+if (!gl) fatal('Cần WebGL2 — mở bằng Chrome/Edge/Firefox mới.');
+if (!gl.getExtension('EXT_color_buffer_float')) fatal('Thiếu EXT_color_buffer_float.');
+function sh(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fatal('Shader: ' + gl.getShaderInfoLog(s));
+  return s;
+}
+function prog(id){
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, document.getElementById('vs').textContent));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, document.getElementById(id).textContent));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fatal('Link: ' + gl.getProgramInfoLog(p));
+  return p;
+}
+const simP = prog('simfs'), dispP = prog('dispfs');
+const U = (p, n) => gl.getUniformLocation(p, n);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+
+let N = 96, read = 0, texs = [], fbos = [], kernelTex = null;
+function makeWorldTex(){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, N, N, 0, gl.RG, gl.FLOAT, new Float32Array(N*N*2));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  const f = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  return [t, f];
+}
+function resizeWorld(n){
+  N = n; cv.width = n; cv.height = n;
+  const a = makeWorldTex(), b = makeWorldTex();
+  texs = [a[0], b[0]]; fbos = [a[1], b[1]]; read = 0;
+  if (!kernelTex){
+    kernelTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, kernelTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 256, 1, 0, gl.RED, gl.FLOAT, new Float32Array(256));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+function uploadGrid(data){
+  const rg = new Float32Array(N * N * 2);
+  for (let i = 0; i < N * N; i++) rg[i * 2] = data[i];
+  gl.bindTexture(gl.TEXTURE_2D, texs[read]);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, N, gl.RG, gl.FLOAT, rg);
+}
+
+let G = { R:13, T:10, b:[1], m:0.15, s:0.015, kn:1, gn:1 };
+function kernelRaw(r){
+  if (r >= 1) return 0;
+  const B = G.b.length, Br = B * r;
+  const j = Math.min(Math.floor(Br), B - 1), f = Br - Math.floor(Br);
+  let core;
+  if (G.kn === 1) core = Math.pow(4*f*(1-f), 4);
+  else core = (f <= 0 || f >= 1) ? 0 : Math.exp(4 - 1/(f*(1-f)));
+  return core * G.b[j];
+}
+function rebuildKernel(){
+  const raw = new Float32Array(256);
+  for (let i = 0; i < 256; i++) raw[i] = kernelRaw(i / 255);
+  let sum = 0;
+  for (let dy = -G.R; dy <= G.R; dy++)
+    for (let dx = -G.R; dx <= G.R; dx++){
+      const d = Math.hypot(dx, dy);
+      if (d < G.R) sum += raw[Math.min(255, Math.floor(d / G.R * 255))];
+    }
+  const inv = sum > 0 ? 1 / sum : 1;
+  const out = new Float32Array(256);
+  for (let i = 0; i < 256; i++) out[i] = raw[i] * inv;
+  gl.bindTexture(gl.TEXTURE_2D, kernelTex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RED, gl.FLOAT, out);
+}
+function setGenome(g){
+  G = { R:g.R|0, T:g.T|0, b:g.b.slice(), m:+g.m, s:+g.s, kn:g.kn|0||1, gn:g.gn|0||1 };
+  rebuildKernel();
+}
+function step(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[1 - read]);
+  gl.viewport(0, 0, N, N);
+  gl.useProgram(simP);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texs[read]);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, kernelTex);
+  gl.uniform1i(U(simP,'uState'), 0); gl.uniform1i(U(simP,'uKernel'), 1);
+  gl.uniform1f(U(simP,'uSize'), N); gl.uniform1i(U(simP,'uR'), G.R);
+  gl.uniform1f(U(simP,'uM'), G.m); gl.uniform1f(U(simP,'uS'), G.s);
+  gl.uniform1f(U(simP,'uDt'), 1 / G.T); gl.uniform1i(U(simP,'uGN'), G.gn);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  read = 1 - read;
+}
+function draw(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, N, N);
+  gl.useProgram(dispP);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texs[read]);
+  gl.uniform1i(U(dispP,'uState'), 0); gl.uniform1f(U(dispP,'uSize'), N);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+/* ---------------- tiện ích ---------------- */
+function gridFromCells(w, h, data){
+  return { w, h, data };
+}
+function cellsOf(sp){
+  if (sp.cells) return sp.cells;
+  if (sp.rle){ const g = rle2grid(sp.rle); sp.cells = { w: g.w, h: g.h, data: new Float32Array(g.data) }; }
+  return sp.cells;
+}
+function stampCentered(world, n, cells, cy, cx){
+  const h = cells.h, w = cells.w;
+  const y0 = Math.round(cy - h/2), x0 = Math.round(cx - w/2);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+    world[((y0+y)%n+n)%n * n + (((x0+x)%n+n)%n)] = cells.data[y*w+x];
+  }
+}
+function worldMass(A){ let s = 0; for (const v of A) s += v; return s; }
+function massLeftRight(A, n){
+  let L = 0, R = 0;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) (x < n/2 ? L += A[y*n+x] : R += A[y*n+x]);
+  return [L, R];
+}
+function largestBlob(A, n, pad){
+  const mask = new Uint8Array(n*n);
+  for (let i = 0; i < n*n; i++) mask[i] = A[i] > 0.15 ? 1 : 0;
+  const seen = new Uint8Array(n*n);
+  let best = null;
+  const stack = [];
+  for (let s = 0; s < n*n; s++){
+    if (!mask[s] || seen[s]) continue;
+    stack.length = 0; stack.push(s); seen[s] = 1;
+    let cnt = 0, sx = 0, sy = 0, x0 = n, x1 = 0, y0 = n, y1 = 0;
+    while (stack.length){
+      const p = stack.pop(); cnt++;
+      const px = p % n, py = (p / n) | 0;
+      sx += px; sy += py;
+      if (px < x0) x0 = px; if (px > x1) x1 = px;
+      if (py < y0) y0 = py; if (py > y1) y1 = py;
+      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const qx = (px+dx+n)%n, qy = (py+dy+n)%n, qi = qy*n+qx;
+        if (mask[qi] && !seen[qi]){ seen[qi] = 1; stack.push(qi); }
+      }
+    }
+    if (!best || cnt > best.cnt) best = { cnt, cx: sx/cnt, cy: sy/cnt, x0, x1, y0, y1 };
+  }
+  if (!best) return null;
+  const P = pad || 6;
+  const bx0 = Math.max(best.x0 - P, 0), bx1 = Math.min(best.x1 + P + 1, n);
+  const by0 = Math.max(best.y0 - P, 0), by1 = Math.min(best.y1 + P + 1, n);
+  const w = bx1 - bx0, h = by1 - by0, data = new Float32Array(w*h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data[y*w+x] = A[(by0+y)*n + bx0+x];
+  return { w, h, data, cnt: best.cnt, cx: best.cx, cy: best.cy };
+}
+function blobCells(A, n, pad){
+  const b = largestBlob(A, n, pad);
+  return b ? { w: b.w, h: b.h, data: b.data } : null;
+}
+function gsum(g){ return `R=${g.R} b=${g.b.map(x=>+x.toFixed(2)).join('+')} m=${(+g.m).toFixed(3)} s=${(+g.s).toFixed(3)}`; }
+function shortName(g){ return `R${g.R}·b${g.b.length}·m${(+g.m).toFixed(2)}`; }
+
+/* ---------------- Save / state ---------------- */
+const SAVE_KEY = 'leniapetri_v2';
+let energy = 120, muted = false, maxMilestone = 0, helpSeen = false;
+let codex = [];      // {name, code, g, rle, cells, src}
+let championId = null;
+
+/* âm thanh tổng hợp — không cần asset */
+let AC = null;
+function ac(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); return AC; }
+function tone(freq, t0, dur, vol){
+  if (muted) return;
+  const ctx = ac(), o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'triangle'; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, ctx.currentTime + t0);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t0 + dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(ctx.currentTime + t0); o.stop(ctx.currentTime + t0 + dur + 0.02);
+}
+function sfx(kind){
+  try {
+    if (kind === 'win')  [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.18, 0.12));
+    if (kind === 'lose') [233, 185, 147].forEach((f, i) => tone(f, i * 0.11, 0.22, 0.12));
+    if (kind === 'catch') [440, 554, 659].forEach((f, i) => tone(f, i * 0.07, 0.14, 0.1));
+    if (kind === 'ui')   tone(660, 0, 0.06, 0.06);
+    if (kind === 'boom') [130, 165, 196, 262, 330].forEach((f, i) => tone(f, i * 0.05, 0.25, 0.1));
+  } catch(e){}
+}
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500);
+}
+/* mốc sưu tập */
+const MILESTONES = [
+  { n: 5,  reward: 60,  title: 'Nhà sinh vật học tập sự' },
+  { n: 10, reward: 120, title: 'Người chăn gen' },
+  { n: 15, reward: 200, title: 'Bác sĩ tiến hóa' },
+  { n: 20, reward: 300, title: 'Kiến trúc sư sự sống' },
+  { n: 30, reward: 500, title: 'Thần Lenia' },
+];
+function checkMilestone(){
+  for (const m of MILESTONES){
+    if (codex.length >= m.n && maxMilestone < m.n){
+      maxMilestone = m.n; energy += m.reward;
+      toast(`🏅 MỐC ${m.n} GEN — danh hiệu "${m.title}" · +${m.reward}⚡`);
+      sfx('win');
+    }
+  }
+}
+
+function save(){
+  const items = codex.map(c => ({
+    name: c.name, src: c.src, g: c.g, code: c.code || null,
+    cells: c.cells ? { w: c.cells.w, h: c.cells.h,
+      b64: btoa(String.fromCharCode(...new Uint8Array(
+        Array.from(c.cells.data).map(v => Math.round(v*255))))) } : null
+  }));
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(
+    { energy, championId, muted, maxMilestone, helpSeen, items })); } catch(e){}
+}
+function load(){
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (!d) return false;
+    energy = d.energy; championId = d.championId;
+    muted = !!d.muted; maxMilestone = d.maxMilestone || 0; helpSeen = !!d.helpSeen;
+    codex = d.items.map(it => {
+      if (!it.rle && it.code){
+        const s = SPECIES.find(x => x.c === it.code);
+        if (s) it.rle = s.g;
+      }
+      return {
+        name: it.name, src: it.src, g: it.g, rle: it.rle || null,
+        cells: it.cells ? { w: it.cells.w, h: it.cells.h,
+          data: new Float32Array(Array.from(atob(it.cells.b64)).map(v => v/255)) } : null
+      };
+    });
+    return codex.length > 0;
+  } catch(e){ return false; }
+}
+function newGame(){
+  const pick = code => SPECIES.find(s => s.c === code);
+  for (const code of ['O2u', 'OG2g'])
+    codex.push({ name: pick(code).n, code, g: pick(code).p, rle: pick(code).g, cells: null, src: 'gốc' });
+}
+
+/* ---------------- UI ---------------- */
+const $ = id => document.getElementById(id);
+const ui = { fA:$('fA'), fB:$('fB'), fP1:$('fP1'), fP2:$('fP2') };
+let mode = 'idle';          // idle | fight | hunt | nursery
+let battleCtx = null, huntCtx = null, nurseryCtx = null;
+
+function refreshHud(){
+  $('hud').textContent = `⚡ ${energy}  ·  Codex ${codex.length} gen`;
+  checkMilestone();
+}
+function fillSelect(sel, excludeId){
+  sel.innerHTML = '';
+  codex.forEach((c, i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = `${c.name}  [${shortName(c.g)}]`;
+    sel.appendChild(o);
+  });
+}
+function refreshSelects(){
+  fillSelect(ui.fA); fillSelect(ui.fP1); fillSelect(ui.fP2);   // fB riêng: chỉ chứa đối thủ hoang
+  if (championId != null && championId < codex.length) ui.fA.value = String(championId);
+  refreshHud();
+}
+function refreshCodexList(){
+  const el = $('codexList'); el.innerHTML = '';
+  codex.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'row' + (i == ui.fA.value ? ' sel' : '');
+    row.innerHTML = `<span>${c.name}<span class="pill">${c.src}</span></span>
+      <span class="g">${shortName(c.g)}</span>`;
+    row.onclick = () => { ui.fA.value = i; ui.fP1.value = i; previewId = i; previewNow(); };
+    el.appendChild(row);
+  });
+}
+function refreshCodexSelectsAndList(){ refreshSelects(); refreshCodexList(); save(); }
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  for (const t of ['dau','lai','san','codex']) $('tab-'+t).style.display = (b.dataset.tab === t) ? 'block' : 'none';
+  if (b.dataset.tab === 'codex') refreshCodexList();
+});
+
+/* ---------------- Đấu ---------------- */
+function startFight(){
+  if (mode !== 'idle') return;
+  if (energy < 0) return;
+  const ia = +ui.fA.value, ib = +ui.fB.value;
+  const A = codex[ia], B = wildOpponents[ib];
+  const hostA = Math.random() < 0.5;
+  const pg = hostA ? A.g : B.g;
+  const size = 112;
+  setGenome(pg); resizeWorld(size);
+  const w = new Float32Array(size*size);
+  const ca = cellsOf(A), cb = cellsOf(B);
+  const gap = 14;
+  stampCentered(w, size, ca, size/2, Math.round(gap/2 + ca.w/2 + 4));
+  stampCentered(w, size, cb, size/2, size-1-Math.round(gap/2 + cb.w/2 + 4));
+  const m0 = massLeftRight(w, size);
+  uploadGrid(w); gen = 0; mode = 'fight';
+  battleCtx = { ia, ib, A, B, hostA, steps: 220, done: 0, m0 };
+  $('btnFight').disabled = true;
+  $('vFight').style.display = 'block';
+  $('vFight').textContent = `Đang đấu... ${A.name} vs ${B.name} (sân ${hostA ? 'A' : 'B'})`;
+  $('stageInfo').textContent = 'Xanh = đấu sĩ của bạn · Lửa = đối thủ hoang dã';
+}
+function finishFight(){
+  const { ia, ib, A, B, hostA, m0 } = battleCtx;
+  const [L, R] = massLeftRight(readback(), N);
+  const keepA = L / Math.max(m0[0], 1e-9), keepB = R / Math.max(m0[1], 1e-9);
+  const total = (L + R) / Math.max(m0[0] + m0[1], 1e-9);
+  let verdict, gain;
+  if (total > 1.3){ verdict = '💥 Bùng nổ — hai phe hợp nhất!'; gain = 20; sfx('boom'); }
+  else if (total < 0.5){ verdict = '☠ Sụp đổ — cả hai tan. Bể chỉ còn tro tàn.'; gain = 8; sfx('lose'); }
+  else if (keepA >= 0.6 && keepB < 0.6){ verdict = `🏆 ${A.name} THẮNG! Đối thủ tan ${Math.round((1-keepB)*100)}%.`; gain = 40; sfx('win'); }
+  else if (keepB >= 0.6 && keepA < 0.6){ verdict = `💀 ${A.name} thua — bị ${B.name} san phẳng.`; gain = 5; sfx('lose'); }
+  else { verdict = '🤝 Hòa — cả hai sống sót.'; gain = 15; }
+  energy += gain; mode = 'idle'; battleCtx = null;
+  $('btnFight').disabled = false;
+  $('vFight').textContent = `${verdict}\nGiữ khối: đấu sĩ ${(keepA*100).toFixed(0)}% · đối thủ ${(keepB*100).toFixed(0)}%\n+${gain}⚡`;
+  refreshHud(); save();
+}
+function readback(){
+  // WebGL2 chỉ bảo đảm readPixels(RGBA, FLOAT) trên float attachment — RED/FLOAT bị từ chối ngầm
+  const out = new Float32Array(N * N * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[read]);
+  gl.readPixels(0, 0, N, N, gl.RGBA, gl.FLOAT, out);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  const a = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) a[i] = out[i * 4];
+  return a;
+}
+
+/* ---------------- Lai ---------------- */
+function breedChild(ga, gb){
+  const R = Math.round((ga.R + gb.R) / 2 + (Math.random()*4 - 2));
+  const m = (ga.m + gb.m) / 2 + (Math.random()*2 - 1) * 0.02;
+  const s = (ga.s + gb.s) / 2 + (Math.random()*2 - 1) * 0.004;
+  let b;
+  if (ga.b.length === gb.b.length){
+    b = ga.b.map((v, i) => Math.min(1, (v + gb.b[i]) / 2));
+  } else {
+    const base = Math.random() < 0.5 ? ga.b : gb.b;
+    b = base.map(v => Math.min(1, v * (0.85 + Math.random()*0.3)));
+  }
+  if (Math.random() < 0.15 && b.length < 3) b = [...b.map(v => v*0.7), 1.0];
+  const kn = Math.random() < 0.5 ? ga.kn : gb.kn;
+  const gn = Math.random() < 0.5 ? ga.gn : gb.gn;
+  return { R: Math.max(8, Math.min(24, R)), T: 10, b: b.map(v => Math.max(0.1, v)),
+           m: Math.max(0.08, Math.min(0.42, +m.toFixed(4))),
+           s: Math.max(0.005, Math.min(0.09, +s.toFixed(4))), kn, gn };
+}
+function startBreed(){
+  if (mode !== 'idle' || energy < 45) { flash($('vBreed'), 'Cần ≥45⚡ và rảnh.'); return; }
+  const g1 = codex[+ui.fP1.value].g, g2 = codex[+ui.fP2.value].g;
+  const child = breedChild(g1, g2);
+  energy -= 45;
+  setGenome(child); resizeWorld(96);
+  // mầm noise mini (không dùng đĩa đặc — khối đặc bị xói với σ hẹp; noise tự tổ chức tốt)
+  const w = new Float32Array(96*96);
+  const r0 = Math.max(10, Math.min(child.R * 1.4, 20));
+  for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++){
+    if (Math.hypot(x - 48, y - 48) < r0) w[y*96+x] = Math.random() < 0.5 ? 1 : 0;
+  }
+  uploadGrid(w); gen = 0; mode = 'nursery';
+  nurseryCtx = { child, steps: 320, done: 0, name: null };
+  $('btnBreed').disabled = true;
+  $('vBreed').style.display = 'block';
+  $('vBreed').textContent = `Ờm ươm... gen con: ${gsum(child)}`;
+  $('stageInfo').textContent = 'Vườn ươm — đĩa mầm đang tự tổ chức dưới gen con';
+  refreshHud(); save();
+}
+function finishNursery(){
+  const { child } = nurseryCtx;
+  const A = readback();
+  const mass = worldMass(A);
+  const blob = largestBlob(A, N, 8);
+  const ok = mass >= 18 && blob && blob.cnt >= 60;
+  mode = 'idle'; nurseryCtx = null; $('btnBreed').disabled = false;
+  if (ok){
+    const name = 'Con ' + Math.random().toString(36).slice(2, 5).toUpperCase();
+    codex.push({ name, g: child, cells: { w: blob.w, h: blob.h, data: blob.data }, src: 'lai' });
+    $('vBreed').textContent = `🎉 SỐNG SÓT! "${name}" vào codex.\n${gsum(child)}\nKhối lượng ${mass.toFixed(0)}`;
+  } else {
+    $('vBreed').textContent = `☠ Gen chết non (mass ${mass.toFixed(0)}). Mất 45⚡ — bài học về vùng sống.`;
+  }
+  refreshCodexSelectsAndList();
+}
+
+/* ---------------- Săn ---------------- */
+function startHunt(){
+  if (mode !== 'idle' || energy < 25) { flash($('vHunt'), 'Cần ≥25⚡ và rảnh.'); return; }
+  energy -= 25;
+  // gen hoang dã: vùng giàu sự sống (từ bản đồ đêm), đột biến rộng
+  const R = [10,13,16][Math.floor(Math.random()*3)];
+  const B = Math.random() < 0.55 ? 2 : 1;
+  const b = B === 1 ? [1] : [+(0.35 + Math.random()*0.6).toFixed(2), 1];
+  const m = 0.19 + Math.random()*0.14;
+  const wild = { R, T: 10, b, m: +m.toFixed(4), s: +(m*(0.08 + Math.random()*0.12)).toFixed(4), kn: 1, gn: 1 };
+  setGenome(wild); resizeWorld(96);
+  const w = new Float32Array(96*96);
+  for (let i = 0; i < w.length; i++) w[i] = Math.random() < 0.5 ? 1 : 0;
+  uploadGrid(w); gen = 0; mode = 'hunt';
+  huntCtx = { wild, steps: 420, done: 0 };
+  $('btnHunt').disabled = true;
+  $('vHunt').style.display = 'block';
+  $('vHunt').textContent = `Bể đang lắng... gen hoang ${gsum(wild)}`;
+  refreshHud(); save();
+}
+function finishHunt(){
+  const { wild } = huntCtx;
+  const A = readback();
+  const blob = largestBlob(A, N, 8);
+  const mass = worldMass(A);
+  mode = 'idle'; huntCtx = null; $('btnHunt').disabled = false;
+  if (mass >= 15 && blob && blob.cnt >= 50){
+    const name = 'Hoang ' + Math.random().toString(36).slice(2, 5).toUpperCase();
+    codex.push({ name, g: wild, cells: { w: blob.w, h: blob.h, data: blob.data }, src: 'bắt' });
+    $('vHunt').textContent = `🎉 BẮT ĐƯỢC! "${name}" vào codex (mass ${mass.toFixed(0)}).\n${gsum(wild)}`;
+    refreshCodexSelectsAndList();
+  } else {
+    $('vHunt').textContent = `🍂 Bể chết (mass ${mass.toFixed(0)}) — mất 25⚡. Mãnh vùng này không nuôi được sự sống.`;
+  }
+}
+function flash(el, msg){ el.style.display = 'block'; el.textContent = msg; }
+
+/* ---------------- Xem & vòng lặp chính ---------------- */
+let previewId = null;
+function previewNow(){
+  if (mode !== 'idle') return;
+  const c = codex[previewId ?? +ui.fA.value];
+  if (!c) return;
+  setGenome(c.g); resizeWorld(96);
+  const w = new Float32Array(96*96);
+  stampCentered(w, 96, cellsOf(c), 48, 48);
+  uploadGrid(w); gen = 0; mode = 'idle';
+  $('stageInfo').textContent = `${c.name} — ${gsum(c.g)}`;
+}
+$('btnFight').onclick = () => { sfx('ui'); startFight(); };
+$('btnBreed').onclick = () => { sfx('ui'); startBreed(); };
+$('btnHunt').onclick = () => { sfx('ui'); startHunt(); };
+$('btnPreview').onclick = () => { previewId = +ui.fA.value; previewNow(); };
+$('btnReset').onclick = () => { localStorage.removeItem(SAVE_KEY); location.reload(); };
+
+/* âm thanh / help / share */
+$('btnMute').onclick = () => { muted = !muted; $('btnMute').textContent = muted ? '🔇' : '🔊'; save(); };
+$('btnHelp').onclick = () => { $('help').style.display = 'flex'; };
+$('btnStart').onclick = () => { helpSeen = true; $('help').style.display = 'none'; sfx('ui'); save(); };
+$('btnExport').onclick = () => {
+  const c = codex[+ui.fA.value];
+  if (!c) return;
+  const payload = { g: c.g, name: c.name,
+    cells: c.cells ? { w: c.cells.w, h: c.cells.h,
+      b64: btoa(String.fromCharCode(...new Uint8Array(
+        Array.from(c.cells.data).map(v => Math.round(v*255))))) } : null };
+  const code = 'LNP1.' + btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const ta = $('impCode'); ta.value = code; ta.select();
+  if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => toast('📋 Đã copy gen code — gửi bạn bè được!')).catch(() => {});
+};
+$('btnImport').onclick = () => {
+  try {
+    const raw = $('impCode').value.trim();
+    if (!raw.startsWith('LNP1.')) throw new Error('code không đúng định dạng LNP1.');
+    const payload = JSON.parse(decodeURIComponent(escape(atob(raw.slice(5)))));
+    if (!payload.g || !payload.g.R) throw new Error('thiếu gen');
+    const name = (payload.name || 'Nhập khẩu') + ' *';
+    codex.push({ name, g: payload.g, cells: payload.cells ? {
+      w: payload.cells.w, h: payload.cells.h,
+      data: new Float32Array(Array.from(atob(payload.cells.b64)).map(v => v/255)) } : null,
+      src: 'nhập' });
+    refreshCodexSelectsAndList();
+    toast(`✅ Đã nhập "${name}" vào codex!`); sfx('catch');
+  } catch(e){ toast('❌ Code lỗi: ' + e.message); }
+};
+
+let gen = 0, lastT = performance.now(), fps = 60;
+function loop(now){
+  const dt = now - lastT; lastT = now;
+  if (dt > 0) fps = fps * 0.95 + (1000/dt) * 0.05;
+  if (mode === 'fight' && battleCtx){
+    for (let i = 0; i < 2 && battleCtx.done < battleCtx.steps; i++){ step(); battleCtx.done++; gen++; }
+    if (battleCtx.done >= battleCtx.steps){ draw(); finishFight(); }
+  } else if (mode === 'hunt' && huntCtx){
+    for (let i = 0; i < 4 && huntCtx.done < huntCtx.steps; i++){ step(); huntCtx.done++; gen++; }
+    if (huntCtx.done >= huntCtx.steps){ draw(); finishHunt(); }
+  } else if (mode === 'nursery' && nurseryCtx){
+    for (let i = 0; i < 4 && nurseryCtx.done < nurseryCtx.steps; i++){ step(); nurseryCtx.done++; gen++; }
+    if (nurseryCtx.done >= nurseryCtx.steps){ draw(); finishNursery(); }
+  } else {
+    for (let i = 0; i < 2; i++) step(); gen += 2;   // preview luôn sống động
+  }
+  draw();
+  $('status').textContent = `gen ${gen} · ${fps.toFixed(0)} fps · N=${N} · ${gsum(G)}`;
+  requestAnimationFrame(loop);
+}
+
+/* wild opponents = toàn bộ loài gốc (người chơi đấu với chính bộ đa dạng của tự nhiên) */
+let wildOpponents = [];
+
+/* khởi động */
+resizeWorld(N);
+if (!load()) newGame();
+wildOpponents = SPECIES.filter(s => s.c !== 'O2u').map(s => ({
+  name: s.n, g: s.p, rle: s.g, cells: null, src: 'gốc'
+}));
+refreshCodexSelectsAndList();
+fillSelect(ui.fB);
+$('btnMute').textContent = muted ? '🔇' : '🔊';
+if (!helpSeen) $('help').style.display = 'flex';
+wildOpponents.forEach((w, i) => {
+  const o = document.createElement('option');
+  o.value = i; o.textContent = `${w.name}  [${shortName(w.g)}]`;
+  ui.fB.appendChild(o);
+});
+previewNow();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
